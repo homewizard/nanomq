@@ -355,11 +355,16 @@ server_cb(void *arg)
 			if (work->msg_ret) {
 				log_debug("retain msg [%p] size [%ld] \n",
 				    work->msg_ret, cvector_size(work->msg_ret));
-				for (int i = 0; i < cvector_size(work->msg_ret) &&
-				     check_msg_exp(work->msg_ret[i],
-				         nng_mqtt_msg_get_publish_property(
-				             work->msg_ret[i])); i++) {
+				for (int i = 0; i < cvector_size(work->msg_ret); i++) {
 					nng_msg *m = work->msg_ret[i];
+					// check_msg_exp frees msg internally in SQLITE builds when expired
+					if (!check_msg_exp(m, nng_mqtt_msg_get_publish_property(m))) {
+#if !defined(NNG_SUPP_SQLITE)
+						// In non-SQLITE builds check_msg_exp does not free, so we must
+						nng_msg_free(m);
+#endif
+						continue;
+					}
 					work->msg = m;
 					work->pub_packet = (struct pub_packet_struct *) nng_zalloc(
 										sizeof(struct pub_packet_struct));
@@ -376,14 +381,16 @@ server_cb(void *arg)
 							} else {
 								nng_msg_set_cmd_type(rmsg, CMD_PUBLISH);
 							}
+							if (encode_pub_message(rmsg, work, PUBLISH)) {
+								nng_mqtt_msg_set_sub_retain_bool(rmsg, true);
+								nng_aio_set_msg(work->aio, rmsg);
+								nng_aio_set_prov_data(work->aio, &work->pid.id);
+								nng_ctx_send(work->ctx, work->aio);
+							} else {
+								log_warn("encode retain msg failed!");
+								nng_msg_free(rmsg);
+							}
 						}
-						if (encode_pub_message(rmsg, work, PUBLISH)) {
-							nng_mqtt_msg_set_sub_retain_bool(rmsg, true);
-							nng_aio_set_msg(work->aio, rmsg);
-							nng_aio_set_prov_data(work->aio, &work->pid.id);
-							nng_ctx_send(work->ctx, work->aio);
-						} else
-							log_warn("encode retain msg failed!");
 					} else {
 						log_warn("decode retain msg failed!");
 					}
@@ -395,6 +402,7 @@ server_cb(void *arg)
 					nng_msg_free(m);
 				}
 				cvector_free(work->msg_ret);
+				work->msg_ret = NULL;
 			}
 			nng_msg_set_cmd_type(smsg, CMD_SUBACK);
 			nng_aio_set_prov_data(work->aio, &work->pid.id);
