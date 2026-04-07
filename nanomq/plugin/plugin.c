@@ -38,6 +38,8 @@ int plugin_hook_register(unsigned int point, int (*cb)(void *data))
 
 	cvector_push_back(g_hooks, hook);
 
+	log_info("plugin_hook_register: %d successfully", point);
+
 	return 0;
 }
 

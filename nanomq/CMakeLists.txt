@@ -149,6 +149,10 @@ else()
   target_link_libraries(nanomq nng)
 endif()
 
+if(NNG_ENABLE_PLUGIN)
+  target_link_options(nanomq PRIVATE -Wl,--export-dynamic)
+endif()
+
 target_compile_definitions(nanomq PRIVATE -DPARALLEL=${PARALLEL})
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 # Package all static files into one libnanomq.a
