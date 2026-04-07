@@ -80,6 +80,11 @@ Building NanoMQ requires a C99-compatible compiler and [CMake](http://www.cmake.
   make
   ```
 
+## HomeWizard build
+This build has plugins enabled and adds the timestamp plugin. You can build the plugin within docker with the following command in the root folder:
+
+` docker buildx build --platform linux/amd64 -t europe-docker.pkg.dev/hw-cloud-service/eu.gcr.io/nanomq:latest -f deploy/docker/Dockerfile . `
+
 ### Build option
 
 There are some configuration options specified using CMake defines in addition to the standard options like `CMAKE_BUILD_TYPE`:
