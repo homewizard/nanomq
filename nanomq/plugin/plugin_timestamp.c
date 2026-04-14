@@ -42,23 +42,16 @@ int timestamp_cb(void *data)
     property[1] = malloc(strlen(time_buf) + 1);
     strcpy(property[1], time_buf);
 
-    log_info("Added timestamp: %s\n", time_buf);
-
     return 0;
 }
 
 int nano_plugin_init(void)
 {
-    fprintf(stderr, "Initializing timestamp plugin...\n");
-    fflush(stderr);
     
     if (plugin_hook_register(HOOK_USER_PROPERTY, timestamp_cb) != 0) {
-        fprintf(stderr, "Failed to register hook\n");
-        fflush(stderr);
+        log_error("Failed to register hook\n");
         return -1;
     }
     
-    fprintf(stderr, "Timestamp plugin initialized successfully\n");
-    fflush(stderr);
     return 0;
 }
