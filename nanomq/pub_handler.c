@@ -786,7 +786,7 @@ compose_sql_clause(rule *info, char *key, char *value,
         sbuf_appendf(&val_sb, "%d, ", pp->fixed_header.qos);
         break;
 
-    case RULE_ID:
+    case RULE_ID:;
 		const char *id_key = (col != NULL) ? col : "Id";
     	sbuf_init(&key_sb, strlen(id_key)+8);
     	sbuf_init(&val_sb, 16);
@@ -842,7 +842,7 @@ compose_sql_clause(rule *info, char *key, char *value,
         break;
     }
 
-    case RULE_TIMESTAMP:
+    case RULE_TIMESTAMP:;
 		const char *ts_key = (col != NULL) ? col : "Timestamp";
 	    sbuf_init(&key_sb,   strlen(ts_key)+8);
     	sbuf_init(&val_sb,  32);
@@ -973,7 +973,7 @@ compose_sql_clause_new(rule *info, sbuf_t *key, sbuf_t *value,
         sbuf_appendf(&val_sb, "%d, ", pp->fixed_header.qos);
         break;
 
-    case RULE_ID:
+    case RULE_ID:;
 		const char *id_key = (col != NULL) ? col : "Id";
     	sbuf_init(&key_sb, strlen(id_key)+8);
     	sbuf_init(&val_sb, 16);
@@ -1029,7 +1029,7 @@ compose_sql_clause_new(rule *info, sbuf_t *key, sbuf_t *value,
         break;
     }
 
-    case RULE_TIMESTAMP:
+    case RULE_TIMESTAMP:;
 		const char *ts_key = (col != NULL) ? col : "Timestamp";
 	    sbuf_init(&key_sb,   strlen(ts_key)+8);
     	sbuf_init(&val_sb,  32);
@@ -1809,25 +1809,21 @@ free_pub_packet(struct pub_packet_struct *pub_packet)
 {
 	if (pub_packet != NULL) {
 		if (pub_packet->fixed_header.packet_type == PUBLISH) {
-			if (pub_packet->var_header.publish.topic_name.body !=
-			        NULL &&
-			    pub_packet->var_header.publish.topic_name.len >
-			        0) {
+			if (pub_packet->var_header.publish.topic_name.body != NULL) {
 				nng_free(pub_packet->var_header.publish
 				             .topic_name.body,
 				    pub_packet->var_header.publish.topic_name
-				            .len +
-				        1);
-				pub_packet->var_header.publish.topic_name
-				    .body = NULL;
-				pub_packet->var_header.publish.topic_name.len =
-				    0;
+				            .len + 1);
+				pub_packet->var_header.publish.topic_name.body =
+				    NULL;
+				pub_packet->var_header.publish.topic_name.len = 0;
 				log_debug("free topic");
 			}
 
-			if (pub_packet->var_header.publish.prop_len > 0) {
+			if (pub_packet->var_header.publish.properties != NULL) {
 				property_free(
 				    pub_packet->var_header.publish.properties);
+				pub_packet->var_header.publish.properties = NULL;
 				pub_packet->var_header.publish.prop_len = 0;
 				log_debug("free properties");
 			}
@@ -1840,6 +1836,11 @@ free_pub_packet(struct pub_packet_struct *pub_packet)
 				pub_packet->payload.len  = 0;
 				log_debug("free payload");
 			}
+		} else if (pub_packet->var_header.pub_arrc.properties != NULL) {
+			property_free(pub_packet->var_header.pub_arrc.properties);
+			pub_packet->var_header.pub_arrc.properties = NULL;
+			pub_packet->var_header.pub_arrc.prop_len   = 0;
+			log_debug("free pub_arrc properties");
 		}
 
 		nng_free(pub_packet, sizeof(struct pub_packet_struct));
@@ -2154,6 +2155,9 @@ decode_pub_message(nano_work *work, uint8_t proto)
 				    // property_get_value(pub_packet->var_header
 				    //                        .publish.properties,
 				    //     SUBSCRIPTION_IDENTIFIER) != NULL
+					property_free(pub_packet->var_header.publish.properties);
+					pub_packet->var_header.publish.properties = NULL;
+					pub_packet->var_header.publish.prop_len   = 0;
 					return PROTOCOL_ERROR;
 				}
 			}
@@ -2162,6 +2166,11 @@ decode_pub_message(nano_work *work, uint8_t proto)
 		if (pos > msg_len) {
 			log_debug("buffer-overflow: pos = %u, msg_len = %lu",
 			    pos, msg_len);
+			if (pub_packet->var_header.publish.properties) {
+				property_free(pub_packet->var_header.publish.properties);
+				pub_packet->var_header.publish.properties = NULL;
+				pub_packet->var_header.publish.prop_len   = 0;
+			}
 			return PROTOCOL_ERROR;
 		}
 
@@ -2201,6 +2210,9 @@ decode_pub_message(nano_work *work, uint8_t proto)
 			if (check_properties(
 			        pub_packet->var_header.pub_arrc.properties, msg) !=
 			    SUCCESS) {
+				property_free(pub_packet->var_header.pub_arrc.properties);
+				pub_packet->var_header.pub_arrc.properties = NULL;
+				pub_packet->var_header.pub_arrc.prop_len   = 0;
 				return PROTOCOL_ERROR;
 			}
 		}

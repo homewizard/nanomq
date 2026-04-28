@@ -15,6 +15,15 @@
 #include "nng/nng.h"
 #include "nng/protocol/mqtt/mqtt.h"
 
+#define FREE_UNSUB_PROPERTIES(pkt)                  \
+    do {                                            \
+        if ((pkt)->properties != NULL) {            \
+            property_free((pkt)->properties);       \
+            (pkt)->properties = NULL;               \
+            (pkt)->prop_len   = 0;                  \
+        }                                           \
+    } while(0)
+
 int
 decode_unsub_msg(nano_work *work)
 {
@@ -38,6 +47,9 @@ decode_unsub_msg(nano_work *work)
 
 	// handle varibale header
 	variable_ptr = nng_msg_body(msg);
+	if (remaining_len < 2) {
+		return PROTOCOL_ERROR;
+	}
 	NNI_GET16(variable_ptr, unsub_pkt->packet_id);
 	vpos += 2;
 
@@ -49,6 +61,7 @@ decode_unsub_msg(nano_work *work)
 		unsub_pkt->properties =
 		    decode_properties(msg, &vpos, &unsub_pkt->prop_len, false);
 		if (check_properties(unsub_pkt->properties, msg) != SUCCESS) {
+			FREE_UNSUB_PROPERTIES(unsub_pkt);
 			return PROTOCOL_ERROR;
 		}
 	}
@@ -57,10 +70,15 @@ decode_unsub_msg(nano_work *work)
 	    unsub_pkt->packet_id);
 
 	// handle payload
-	payload_ptr = nng_msg_payload_ptr(msg);
+	if (vpos > remaining_len) {
+		return PROTOCOL_ERROR;
+	}
+	payload_ptr = variable_ptr + vpos;
+	nng_msg_set_payload_ptr(msg, payload_ptr);
 
 	if ((tn = nng_alloc(sizeof(topic_node))) == NULL) {
 		log_debug("nng_alloc");
+		FREE_UNSUB_PROPERTIES(unsub_pkt);
 		return NNG_ENOMEM;
 	}
 	unsub_pkt->node = tn;
@@ -69,20 +87,21 @@ decode_unsub_msg(nano_work *work)
 	while (1) {
 		_tn = tn;
 
-		len_of_topic = get_utf8_str(&tn->topic.body, payload_ptr, &bpos, nng_msg_len(msg));
+		len_of_topic = get_utf8_str(&tn->topic.body, payload_ptr, &bpos,
+		    nng_msg_len(msg) - vpos);
 		if (len_of_topic != -1) {
 			tn->topic.len = len_of_topic;
 		} else {
 			tn->reason_code = UNSPECIFIED_ERROR;
 			log_debug("not utf-8 format string.");
+			FREE_UNSUB_PROPERTIES(unsub_pkt);
 			return PROTOCOL_ERROR;
 		}
 
-		log_debug("bpos+vpos: [%d] remain_len: [%ld]", bpos + vpos,
-		    remaining_len);
+		log_debug("bpos+vpos: [%d] remain_len: [%ld]", bpos + vpos, remaining_len);
 		if (bpos < remaining_len - vpos) {
 			if ((tn = nng_alloc(sizeof(topic_node))) == NULL) {
-				log_debug("nng_alloc");
+				FREE_UNSUB_PROPERTIES(unsub_pkt);
 				return NNG_ENOMEM;
 			}
 			tn->next  = NULL;
@@ -223,11 +242,7 @@ unsub_pkt_free(packet_unsubscribe *unsub_pkt)
 		return;
 	}
 
-	if (unsub_pkt->prop_len != 0) {
-		property_free(unsub_pkt->properties);
-		unsub_pkt->properties = NULL;
-		unsub_pkt->prop_len = 0;
-	}
+	FREE_UNSUB_PROPERTIES(unsub_pkt);
 
 	topic_node *tn = unsub_pkt->node;
 	topic_node *next_tn;
